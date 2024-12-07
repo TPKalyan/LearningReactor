@@ -13,7 +13,9 @@ import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 public class FileProcessingService {
@@ -28,7 +30,8 @@ public class FileProcessingService {
 
     public Flux<TargetAudience> processFile(String fileUrl) {
         return Flux.defer(() -> downloadFile(fileUrl))
-                .flatMap(fileLine -> saveToDatabase(fileUrl, fileLine))
+                .buffer(500) // Batch size of 50, adjust as necessary
+                .flatMap(batch -> saveToDatabase(fileUrl, batch))
                 .doOnError(throwable -> logger.error("Failed to fetch the file", throwable))
                 .doOnComplete(() -> logger.info("Finished processing"))
                 .subscribeOn(Schedulers.boundedElastic());
@@ -61,11 +64,17 @@ public class FileProcessingService {
         });
     }
 
-    private Mono<TargetAudience> saveToDatabase(String fileName, UUID fileLine) {
-        TargetAudience entity = new TargetAudience();
-        entity.setFilename(fileName);
-        entity.setMemberId(fileLine);
+    private Flux<TargetAudience> saveToDatabase(String fileName, List<UUID> fileLines) {
+        List<TargetAudience> entities = fileLines.stream()
+                .map(fileLine -> {
+                    TargetAudience entity = new TargetAudience();
+                    entity.setFilename(fileName);
+                    entity.setMemberId(fileLine);
+                    return entity;
+                })
+                .collect(Collectors.toList());
 
-        return Mono.fromCallable(() -> dataRepository.save(entity)); // Assuming save returns TargetAudience
+        // Assuming saveAll returns an Iterable<TargetAudience>
+        return Flux.fromIterable(dataRepository.saveAll(entities)); // Adjust if using reactive repository
     }
 }
