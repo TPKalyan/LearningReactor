@@ -5,7 +5,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
 import reactor.core.scheduler.Schedulers;
 
 import java.io.BufferedReader;
@@ -30,8 +29,8 @@ public class FileProcessingService {
 
     public Flux<TargetAudience> processFile(String fileUrl) {
         return Flux.defer(() -> downloadFile(fileUrl))
-                .buffer(500) // Batch size of 50, adjust as necessary
-                .flatMap(batch -> saveToDatabase(fileUrl, batch))
+                .buffer(500)
+                .flatMap(batch -> saveToDatabase(fileUrl, batch), 10)
                 .doOnError(throwable -> logger.error("Failed to fetch the file", throwable))
                 .doOnComplete(() -> logger.info("Finished processing"))
                 .subscribeOn(Schedulers.boundedElastic());
